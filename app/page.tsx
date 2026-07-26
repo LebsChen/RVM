@@ -36,7 +36,19 @@ import {
   Info
 } from 'lucide-react';
 
-type TabId = 'status' | 'config' | 'server' | 'capabilities' | 'e2e' | 'terminal' | 'logs';
+type TabId = 'status' | 'outposts' | 'config' | 'server' | 'capabilities' | 'e2e' | 'terminal' | 'logs';
+
+interface OutpostState {
+  status: 'stopped' | 'starting' | 'running' | 'error';
+  pid: number;
+  config: {
+    outpost_id: string;
+    token: string;
+    workdir: string;
+    auto_start: boolean;
+  };
+  logs: string[];
+}
 
 interface AgentState {
   status: 'stopped' | 'starting' | 'running' | 'error';
@@ -106,6 +118,63 @@ export default function RvmClientApp() {
   const [config, setConfig] = useState<AgentConfig>(DEFAULT_CONFIG);
   const [agentBusy, setAgentBusy] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  // Outpost Worker State
+  const [outpostState, setOutpostState] = useState<OutpostState>({
+    status: 'stopped',
+    pid: 0,
+    config: { outpost_id: '', token: '', workdir: '/workspace', auto_start: false },
+    logs: [],
+  });
+  const [outpostBusy, setOutpostBusy] = useState(false);
+
+  const handleSaveOutpostConfig = async () => {
+    setOutpostBusy(true);
+    try {
+      await fetch('/api/rvm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_outpost_config', config: outpostState.config }),
+      });
+      await fetchState();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOutpostBusy(false);
+    }
+  };
+
+  const handleStartOutpost = async () => {
+    setOutpostBusy(true);
+    try {
+      await fetch('/api/rvm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'start_outpost', config: outpostState.config }),
+      });
+      await fetchState();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOutpostBusy(false);
+    }
+  };
+
+  const handleStopOutpost = async () => {
+    setOutpostBusy(true);
+    try {
+      await fetch('/api/rvm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'stop_outpost' }),
+      });
+      await fetchState();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setOutpostBusy(false);
+    }
+  };
 
   // E2E Test Suite State
   const [e2eLoading, setE2eLoading] = useState(false);
@@ -184,6 +253,9 @@ export default function RvmClientApp() {
           capability_status: data.capability_status || {},
           services: data.services || [],
         }));
+        if (data.outpost) {
+          setOutpostState(data.outpost);
+        }
       }
     } catch {}
   }, []);
@@ -400,6 +472,7 @@ export default function RvmClientApp() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-slate-800/80 flex space-x-1 overflow-x-auto">
           {[
             { id: 'status', label: 'Status', icon: Activity },
+            { id: 'outposts', label: 'Devin Outposts', icon: Box },
             { id: 'config', label: 'Configuration', icon: Sliders },
             { id: 'server', label: 'Server Services', icon: Server },
             { id: 'capabilities', label: 'Capabilities', icon: Cpu },
@@ -520,6 +593,148 @@ export default function RvmClientApp() {
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: DEVIN OUTPOSTS WORKER */}
+        {activeTab === 'outposts' && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900 p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <Box className="w-6 h-6 text-cyan-400" />
+                <div>
+                  <h2 className="text-base font-semibold text-white">Devin Outposts / DevBox Worker</h2>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    将本节点注册为 Devin 云端 24/7 出站 Worker，直接处理来自 Devin.ai 的远程任务
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span
+                  className={`px-3 py-1 text-xs font-mono rounded-full border ${
+                    outpostState.status === 'running'
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                      : outpostState.status === 'starting'
+                      ? 'bg-amber-500/10 border-amber-500/30 text-amber-400'
+                      : 'bg-slate-800 border-slate-700 text-slate-400'
+                  }`}
+                >
+                  {outpostState.status === 'running'
+                    ? `Worker Running (PID ${outpostState.pid})`
+                    : outpostState.status === 'starting'
+                    ? 'Starting Worker...'
+                    : 'Worker Stopped'}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+              <div className="space-y-2">
+                <label className="text-slate-300 font-semibold">Outpost ID</label>
+                <input
+                  type="text"
+                  value={outpostState.config.outpost_id}
+                  onChange={(e) =>
+                    setOutpostState({
+                      ...outpostState,
+                      config: { ...outpostState.config, outpost_id: e.target.value },
+                    })
+                  }
+                  placeholder="outpost_env-..."
+                  disabled={outpostState.status === 'running'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 font-mono text-slate-100 focus:outline-none focus:border-cyan-500 transition disabled:opacity-60"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-slate-300 font-semibold">Worker Token</label>
+                <input
+                  type="password"
+                  value={outpostState.config.token}
+                  onChange={(e) =>
+                    setOutpostState({
+                      ...outpostState,
+                      config: { ...outpostState.config, token: e.target.value },
+                    })
+                  }
+                  placeholder="cog_..."
+                  disabled={outpostState.status === 'running'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 font-mono text-slate-100 focus:outline-none focus:border-cyan-500 transition disabled:opacity-60"
+                />
+              </div>
+
+              <div className="space-y-2 md:col-span-2">
+                <label className="text-slate-300 font-semibold">Working Directory (Optional)</label>
+                <input
+                  type="text"
+                  value={outpostState.config.workdir}
+                  onChange={(e) =>
+                    setOutpostState({
+                      ...outpostState,
+                      config: { ...outpostState.config, workdir: e.target.value },
+                    })
+                  }
+                  placeholder="/workspace"
+                  disabled={outpostState.status === 'running'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3.5 py-2 font-mono text-slate-100 focus:outline-none focus:border-cyan-500 transition disabled:opacity-60"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-3 pt-2">
+              <button
+                onClick={handleSaveOutpostConfig}
+                disabled={outpostBusy || outpostState.status === 'running'}
+                className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 font-medium text-xs transition"
+              >
+                保存配置
+              </button>
+
+              {outpostState.status !== 'running' ? (
+                <button
+                  onClick={handleStartOutpost}
+                  disabled={outpostBusy}
+                  className="px-5 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-semibold text-xs transition shadow flex items-center space-x-1.5"
+                >
+                  <Play className="w-3.5 h-3.5" />
+                  <span>{outpostBusy ? '启动中...' : '启动 Outpost Worker'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleStopOutpost}
+                  disabled={outpostBusy}
+                  className="px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-semibold text-xs transition shadow flex items-center space-x-1.5"
+                >
+                  <Square className="w-3.5 h-3.5" />
+                  <span>停止 Worker</span>
+                </button>
+              )}
+            </div>
+
+            <div className="p-4 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-400 space-y-2 leading-relaxed">
+              <div className="flex items-center space-x-2 text-cyan-400 font-semibold">
+                <Info className="w-4 h-4" />
+                <span>Devin Outposts 说明</span>
+              </div>
+              <p>
+                在 Devin 网页端（devin.ai）设置 → Environment → Outposts 创建一个 Outpost 节点，获取 <code className="text-cyan-300">outpost_env</code> ID 与 <code className="text-amber-300">cog_</code> worker 令牌。
+              </p>
+              <p>
+                填入后启动，RVM 会在本节点后台直接长轮询连接 Devin 云端。Outpost 属于主动连出型 Worker，不需要本地开放任何暴露接口或配置穿透隧道。
+              </p>
+            </div>
+
+            {/* Live Outpost Worker Log Output */}
+            <div className="space-y-2">
+              <h3 className="text-xs font-semibold text-slate-300">Outpost Worker 实时运行日志</h3>
+              <div className="p-4 bg-slate-950 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 h-48 overflow-y-auto leading-relaxed">
+                {outpostState.logs && outpostState.logs.length > 0 ? (
+                  outpostState.logs.map((line, idx) => <div key={idx}>{line}</div>)
+                ) : (
+                  <div className="text-slate-500 italic">暂无 Outpost 日志</div>
+                )}
               </div>
             </div>
           </div>

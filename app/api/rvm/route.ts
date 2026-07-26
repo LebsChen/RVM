@@ -25,8 +25,20 @@ if (!g.__rvm_agent_config) {
   };
 }
 
+if (!g.__rvm_outpost_logs) g.__rvm_outpost_logs = [];
+if (!g.__rvm_outpost_config) {
+  g.__rvm_outpost_config = {
+    outpost_id: '',
+    token: '',
+    workdir: '/workspace',
+    auto_start: false,
+  };
+}
+
 let agentLogs: string[] = g.__rvm_agent_logs;
 let agentConfig = g.__rvm_agent_config;
+let outpostLogs: string[] = g.__rvm_outpost_logs;
+let outpostConfig = g.__rvm_outpost_config;
 
 function getAgentProcess(): ChildProcess | null {
   return g.__rvm_agent_process || null;
@@ -34,6 +46,20 @@ function getAgentProcess(): ChildProcess | null {
 
 function setAgentProcess(proc: ChildProcess | null) {
   g.__rvm_agent_process = proc;
+}
+
+function getOutpostProcess(): ChildProcess | null {
+  return g.__rvm_outpost_process || null;
+}
+
+function setOutpostProcess(proc: ChildProcess | null) {
+  g.__rvm_outpost_process = proc;
+}
+
+function addOutpostLog(msg: string) {
+  const ts = new Date().toISOString().slice(11, 19);
+  outpostLogs.push(`[${ts}] ${msg}`);
+  if (outpostLogs.length > 500) outpostLogs.shift();
 }
 
 function checkWhich(bin: string): boolean {
@@ -422,6 +448,9 @@ export async function GET() {
 
   const computedCapStatus = computeRealCapabilities(isHealthy, serverServicesStatus);
 
+  const outpostProc = getOutpostProcess();
+  const isOutpostRunning = outpostProc !== null && outpostProc.exitCode === null;
+
   return NextResponse.json({
     status: isHealthy ? 'running' : isProcessRunning ? 'starting' : 'stopped',
     pid: activeProc?.pid || 0,
@@ -439,6 +468,12 @@ export async function GET() {
     services: serverServicesStatus,
     live_capabilities: liveCaps,
     capability_status: computedCapStatus,
+    outpost: {
+      status: isOutpostRunning ? 'running' : 'stopped',
+      pid: outpostProc?.pid || 0,
+      config: outpostConfig,
+      logs: outpostLogs.slice(-100),
+    },
   });
 }
 
@@ -446,6 +481,76 @@ export async function POST(req: Request): Promise<Response> {
   try {
     const body = await req.json();
     const { action, config: newConfig } = body;
+
+    if (action === 'save_outpost_config') {
+      if (newConfig) {
+        outpostConfig = { ...outpostConfig, ...newConfig };
+        addOutpostLog('Outpost configuration updated.');
+      }
+      return NextResponse.json({ success: true, config: outpostConfig });
+    }
+
+    if (action === 'start_outpost') {
+      let proc = getOutpostProcess();
+      if (proc && proc.exitCode === null) {
+        return NextResponse.json({ success: true, message: 'Outpost worker is already running' });
+      }
+
+      if (newConfig) {
+        outpostConfig = { ...outpostConfig, ...newConfig };
+      }
+
+      if (!outpostConfig.outpost_id || !outpostConfig.token) {
+        return NextResponse.json({ error: 'Outpost ID and Worker Token are required' }, { status: 400 });
+      }
+
+      const outpostScriptPath = path.join(process.cwd(), 'rvm', 'agent', 'outpost.js');
+      addOutpostLog(`Launching Devin Outpost Worker for ${outpostConfig.outpost_id}...`);
+
+      proc = spawn('node', [outpostScriptPath], {
+        env: {
+          ...process.env,
+          DEVIN_OUTPOSTS_TOKEN: outpostConfig.token,
+          OUTPOST_ID: outpostConfig.outpost_id,
+          RVM_OUTPOST_WORKDIR: outpostConfig.workdir || '/workspace',
+          DEVIN_API_URL: 'https://api.devin.ai',
+        },
+        stdio: 'pipe',
+      });
+      setOutpostProcess(proc);
+
+      proc.stdout?.on('data', (chunk) => {
+        const text = chunk.toString().trim();
+        if (text) addOutpostLog(`[STDOUT] ${text}`);
+      });
+
+      proc.stderr?.on('data', (chunk) => {
+        const text = chunk.toString().trim();
+        if (text) addOutpostLog(`[STDERR] ${text}`);
+      });
+
+      proc.on('exit', (code) => {
+        addOutpostLog(`Outpost process exited with code ${code}`);
+        setOutpostProcess(null);
+      });
+
+      return NextResponse.json({
+        success: true,
+        status: 'running',
+        pid: proc.pid,
+        outpost_id: outpostConfig.outpost_id,
+      });
+    }
+
+    if (action === 'stop_outpost') {
+      const proc = getOutpostProcess();
+      if (proc) {
+        addOutpostLog('Stopping Outpost worker process...');
+        proc.kill('SIGTERM');
+        setOutpostProcess(null);
+      }
+      return NextResponse.json({ success: true, status: 'stopped' });
+    }
 
     if (action === 'save_config' && newConfig) {
       agentConfig = { ...agentConfig, ...newConfig };
