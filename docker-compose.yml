@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  rvm-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rvm-agent:latest
+    container_name: rvm-agent
+    restart: unless-stopped
+    ports:
+      - "9876:9876" # RVM Agent API, WebSocket & Web Interface
+      - "5900:5900" # VNC Desktop Access
+    environment:
+      - PORT=9876
+      - TOKEN=devin-rvm-secret-token
+      - ROOT=/workspace
+      - VNC_PASSWORD=devin
+      - BIND=0.0.0.0
+      - AUTO_INSTALL=git,novnc,ffmpeg
+    volumes:
+      - ./workspace:/workspace
+      - rvm-data:/root/.rvm
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9876/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  rvm-data:
+    driver: local

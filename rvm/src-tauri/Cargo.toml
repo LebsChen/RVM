@@ -1,0 +1,22 @@
+[package]
+name = "rvm"
+version = "1.0.32"
+description = "RVM (Remote Virtual Machines) — Expose this machine as a full Devin VM"
+edition = "2021"
+
+[lib]
+name = "rvm_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["unstable"] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rand = "0.8"
+hex = "0.4"
+dirs = "5"
+hostname = "0.4"

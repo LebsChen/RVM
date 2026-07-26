@@ -1,0 +1,10 @@
+node_modules/
+.next/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+rvm/agent/conn.json
+rvm/agent/worklog.jsonl
+rvm/agent/worklog.seq

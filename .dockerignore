@@ -1,0 +1,10 @@
+node_modules
+.next
+npm-debug.log
+.git
+.gitignore
+dist
+build
+conn.json
+.DS_Store
+*.tmp

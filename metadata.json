@@ -1,0 +1,6 @@
+{
+  "name": "RVM Docker Runner",
+  "description": "Dockerized version of LebsChen/Cloud-Dev tools/rvm with test execution and web management interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+dist
+build
+src-tauri/target
+conn.json
+.DS_Store
+*.tmp
