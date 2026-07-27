@@ -183,7 +183,8 @@ async function handleToolCall(id, params, conf, token) {
       }
       case "get_desktop_url": {
         const b = resolvePublicBase(conf);
-        return mcpToolResult(id, `VNC Desktop: ${b.ws}/vnc-ws\nnoVNC: ${b.http}/novnc/vnc.html?show_dot=true`);
+        const novncPath = encodeURIComponent(`vnc-ws?token=${token || ""}`);
+        return mcpToolResult(id, `VNC Desktop: ${b.ws}/vnc-ws\nnoVNC: ${b.http}/novnc/vnc.html?autoconnect=true&resize=scale&show_dot=true&path=${novncPath}`);
       }
       case "get_ide_url": {
         const b = resolvePublicBase(conf);

@@ -331,6 +331,17 @@ function windowsEnvironment(sessionId, gatewayUrl, connectToken, stateDir) {
   return addRemoteEnvironment(env, sessionId, gatewayUrl, connectToken, stateDir);
 }
 
+function detectLinuxDisplay() {
+  try {
+    const sockets = fs.readdirSync("/tmp/.X11-unix")
+      .filter((name) => /^X\d+$/.test(name))
+      .map((name) => Number(name.slice(1)))
+      .sort((a, b) => a - b);
+    if (sockets.length) return `:${sockets[0]}`;
+  } catch {}
+  return null;
+}
+
 function linuxEnvironment(sessionId, gatewayUrl, connectToken, stateDir) {
   const env = { ...process.env };
   env.PATH = env.PATH || "/usr/local/bin:/usr/bin:/bin";
@@ -340,7 +351,7 @@ function linuxEnvironment(sessionId, gatewayUrl, connectToken, stateDir) {
   env.TMPDIR = env.TMPDIR || "/tmp";
   env.LANG = env.LANG || "C.UTF-8";
   env.TZ = env.TZ || "UTC";
-  env.DISPLAY = env.DISPLAY || ":0";
+  env.DISPLAY = env.DISPLAY || detectLinuxDisplay() || ":99";
   env.XAUTHORITY = env.XAUTHORITY || path.join(env.HOME, ".Xauthority");
   return addRemoteEnvironment(env, sessionId, gatewayUrl, connectToken, stateDir);
 }

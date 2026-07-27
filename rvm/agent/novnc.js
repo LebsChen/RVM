@@ -149,6 +149,36 @@ async function ensureNoVnc(log) {
 
 // ── VNC server setup (Linux: Xvfb + x11vnc) ──────────────────────────────
 
+// A bare Xvfb display renders solid black; without a window manager the
+// desktop looks broken even though VNC itself works.
+async function ensureWindowManager(display, log) {
+  const running = await runShell("pgrep -x openbox >/dev/null 2>&1 && echo yes || echo no", undefined, 3000);
+  if (running.stdout.trim() === "yes") return;
+  let check = await runShell("which openbox", undefined, 3000);
+  if (check.exit_code !== 0) {
+    log("[vnc] openbox not found, attempting install...");
+    await runShell("apt-get update -qq && apt-get install -y -qq openbox xterm xdotool 2>/dev/null", undefined, 120000);
+    check = await runShell("which openbox", undefined, 3000);
+  }
+  if (check.exit_code !== 0) {
+    log("[vnc] openbox unavailable; desktop will render as a blank root window");
+    return;
+  }
+  await runShell(`xsetroot -display ${display} -solid grey61 2>/dev/null || true`, undefined, 3000);
+  try {
+    const wm = spawn("openbox", [], {
+      env: { ...process.env, DISPLAY: display },
+      stdio: "ignore",
+      detached: true,
+    });
+    wm.on("error", (err) => log(`[vnc] openbox error: ${err.message}`));
+    wm.unref();
+    log(`[vnc] Started openbox window manager on ${display}`);
+  } catch (e) {
+    log(`[vnc] Failed to start openbox: ${e.message}`);
+  }
+}
+
 async function setupVncServer(vncPort, vncPassword, log) {
   if (isWin) {
     // Windows: check if a VNC server is already running (e.g. TightVNC, UltraVNC)
@@ -168,11 +198,16 @@ async function setupVncServer(vncPort, vncPassword, log) {
   const display = process.env.DISPLAY || ":99";
   const displayNum = display.replace(":", "");
 
-  // Check if display already exists
-  const displayCheck = await runShell(`xdpyinfo -display ${display} >/dev/null 2>&1 && echo yes || echo no`, undefined, 5000);
+  // Check if display already exists (X socket first: xdpyinfo may not be installed)
+  const hasSocket = fs.existsSync(`/tmp/.X11-unix/X${displayNum}`);
+  const displayCheck = hasSocket
+    ? { stdout: "yes" }
+    : await runShell(`xdpyinfo -display ${display} >/dev/null 2>&1 && echo yes || echo no`, undefined, 5000);
   const hasDisplay = displayCheck.stdout.trim() === "yes";
 
-  if (!hasDisplay) {
+  if (hasDisplay) {
+    await ensureWindowManager(display, log);
+  } else {
     // Start Xvfb
     const xvfbCheck = await runShell("which Xvfb", undefined, 3000);
     if (xvfbCheck.exit_code !== 0) {
@@ -195,6 +230,7 @@ async function setupVncServer(vncPort, vncPassword, log) {
 
       await new Promise((r) => setTimeout(r, 1000));
       process.env.DISPLAY = display;
+      await ensureWindowManager(display, log);
     }
   }
 
