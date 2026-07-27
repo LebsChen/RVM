@@ -575,7 +575,7 @@ export default function RvmClientApp() {
                     { label: 'VNC WebSocket', url: `${wsBase}/vnc-ws`, key: 'ep_vnc' },
                     { label: 'PTY Terminal WS', url: `${wsBase}/pty-ws`, key: 'ep_pty' },
                     { label: 'CDP Browser WS', url: `${wsBase}/cdp-ws`, key: 'ep_cdp' },
-                    { label: 'noVNC Client', url: `${endpointBase}/novnc/`, key: 'ep_novnc' },
+                    { label: 'noVNC Client', url: `${endpointBase}/novnc/vnc.html?autoconnect=true&resize=scale&path=${encodeURIComponent(`vnc-ws?token=${state.token}`)}`, key: 'ep_novnc' },
                     { label: 'Web IDE', url: `${endpointBase}/ide/?tkn=${encodeURIComponent(state.token)}`, key: 'ep_ide' },
                     { label: 'Capabilities', url: `${endpointBase}/api/capabilities`, key: 'ep_cap' },
                   ].map((item) => (
