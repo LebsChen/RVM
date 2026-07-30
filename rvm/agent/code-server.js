@@ -273,6 +273,13 @@ async function probeServeWeb(port, connectionToken) {
   }
 }
 
+// Never treat the agent itself as a serve-web process: the agent's own HTTP
+// port is one of the adoption candidates, and adopting it makes every later
+// restart/stop kill the agent (SIGKILL on its own pid).
+function isOwnPid(pid) {
+  return Number(pid) === process.pid;
+}
+
 function findPidsOnPort(port) {
   try {
     if (isWin) {
@@ -310,6 +317,7 @@ function isServeWebProcess(pid) {
 
 function killPids(pids, log) {
   for (const pid of pids) {
+    if (isOwnPid(pid)) continue;
     try {
       if (isWin) execFileSync("taskkill", ["/PID", String(pid), "/T", "/F"], { encoding: "utf8", timeout: 10000, windowsHide: true });
       else process.kill(pid, "SIGKILL");
@@ -443,7 +451,7 @@ async function start(port, password, workspace, log, opts = {}) {
   // The target port may be held by a serve-web left over from a previous agent
   // run: adopt it if healthy, kill it if broken, and only fall back to another
   // port when an unrelated process owns it.
-  const stalePids = findPidsOnPort(port);
+  const stalePids = findPidsOnPort(port).filter((pid) => !isOwnPid(pid));
   if (stalePids.length) {
     if (await probeServeWeb(port, connectionToken)) {
       codeServerPort = port;
@@ -504,7 +512,7 @@ function tryAdoptExistingServeWeb() {
   if (codeServerProc && codeServerPort) return true;
   const candidatePorts = [9877, 9876, 8080];
   for (const p of candidatePorts) {
-    const pids = findPidsOnPort(p);
+    const pids = findPidsOnPort(p).filter((pid) => !isOwnPid(pid) && isServeWebProcess(pid));
     if (pids.length > 0) {
       codeServerPort = p;
       codeServerPassword = "";

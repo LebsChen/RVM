@@ -307,6 +307,15 @@ fn agent_dir() -> PathBuf {
     PathBuf::from("agent")
 }
 
+// Token persisted by a previous run. Reused when the Configuration field is
+// left empty so restarts keep the same token — otherwise every restart rotates
+// it and invalidates the MCP/host registrations that already store it.
+fn saved_token() -> Option<String> {
+    let data = std::fs::read_to_string(config_path()).ok()?;
+    let cfg: AgentConfig = serde_json::from_str(&data).ok()?;
+    if cfg.token.is_empty() { None } else { Some(cfg.token) }
+}
+
 fn generate_token() -> String {
     use rand::Rng;
     let mut rng = rand::thread_rng();
@@ -823,7 +832,7 @@ fn start_agent(config: AgentConfig, state: State<AppState>) -> Result<AgentState
 
     // Resolve token
     let token = if config.token.is_empty() {
-        generate_token()
+        saved_token().unwrap_or_else(generate_token)
     } else {
         config.token.clone()
     };
