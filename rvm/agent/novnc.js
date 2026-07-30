@@ -17,6 +17,7 @@ const os = require("os");
 const http = require("http");
 const { spawn, execFileSync } = require("child_process");
 const { runShell } = require("./core.js");
+const { privilegedPrefix } = require("./vnc-setup.js");
 
 const isWin = process.platform === "win32";
 const NOVNC_DIR = path.join(os.homedir(), ".rvm", "novnc");
@@ -177,8 +178,12 @@ async function setupVncServer(vncPort, vncPassword, log) {
     const xvfbCheck = await runShell("which Xvfb", undefined, 3000);
     if (xvfbCheck.exit_code !== 0) {
       log("[vnc] Xvfb not found. Install with: sudo apt-get install xvfb");
-      // Try to install
-      await runShell("sudo apt-get update -qq && sudo apt-get install -y -qq xvfb x11vnc 2>/dev/null", undefined, 60000);
+      const sudo = privilegedPrefix();
+      if (sudo === null) {
+        log("[vnc] No root privileges to install Xvfb.");
+      } else {
+        await runShell(`${sudo}apt-get update -qq && ${sudo}apt-get install -y -qq xvfb x11vnc 2>/dev/null`, undefined, 60000);
+      }
     }
 
     const xvfbCheck2 = await runShell("which Xvfb", undefined, 3000);
@@ -209,7 +214,12 @@ async function setupVncServer(vncPort, vncPassword, log) {
   const x11vncCheck = await runShell("which x11vnc", undefined, 3000);
   if (x11vncCheck.exit_code !== 0) {
     log("[vnc] x11vnc not found. Install with: sudo apt-get install x11vnc");
-    await runShell("sudo apt-get install -y -qq x11vnc 2>/dev/null", undefined, 60000);
+    const sudo = privilegedPrefix();
+    if (sudo === null) {
+      log("[vnc] No root privileges to install x11vnc.");
+    } else {
+      await runShell(`${sudo}apt-get install -y -qq x11vnc 2>/dev/null`, undefined, 60000);
+    }
   }
 
   const x11vncCheck2 = await runShell("which x11vnc", undefined, 3000);

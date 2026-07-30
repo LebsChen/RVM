@@ -131,9 +131,20 @@ function buildCapabilityStatus(vnc) {
   return status;
 }
 
+// Set once the core HTTP server is listening. Before that a crash means the
+// agent never came up and exiting is correct; after it, the throw almost always
+// comes from an optional background capability (a VNC/tunnel child process
+// emitting 'error', a download failing) and must not take the API surface down.
+let serverReady = false;
+
 process.on("uncaughtException", (err) => {
   const ts = new Date().toISOString().slice(11, 19);
-  console.error(`[${ts}] FATAL: Uncaught exception: ${err.stack || err.message || err}`);
+  const detail = err && (err.stack || err.message) || err;
+  if (serverReady) {
+    console.error(`[${ts}] WARN: Uncaught exception (non-fatal): ${detail}`);
+    return;
+  }
+  console.error(`[${ts}] FATAL: Uncaught exception: ${detail}`);
   process.exit(1);
 });
 process.on("unhandledRejection", (err) => {
@@ -187,6 +198,7 @@ process.on("unhandledRejection", (err) => {
     vncPort: null,
     vncHost: null,
   });
+  serverReady = true;
 
   // Write an initial conn.json snapshot immediately so the GUI clears any
   // stale URL before the capabilities/tunnel come up.

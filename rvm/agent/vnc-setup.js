@@ -24,6 +24,20 @@ function which(cmd) {
   }
 }
 
+// Package installs need root. The agent normally runs as the desktop user, so
+// prefix them with non-interactive sudo. Returns "" when already root, the
+// prefix when sudo works without a password, and null when neither applies.
+function privilegedPrefix() {
+  if (isWin) return "";
+  if (typeof process.getuid === "function" && process.getuid() === 0) return "";
+  try {
+    execSync("sudo -n true", { timeout: 5000, stdio: "pipe" });
+    return "sudo -n ";
+  } catch {
+    return null;
+  }
+}
+
 function getLocalIp() {
   const ifaces = os.networkInterfaces();
   for (const name of Object.keys(ifaces)) {
@@ -72,9 +86,15 @@ function detectLinuxVnc() {
 }
 
 function installLinuxVnc(log) {
+  const sudo = privilegedPrefix();
+  if (sudo === null) {
+    log("[vnc] No VNC server found and no root privileges to install one.");
+    log("[vnc] Install it manually: sudo apt-get install x11vnc");
+    return null;
+  }
   log("[vnc] No VNC server found, attempting install...");
   try {
-    execSync("apt-get update -qq && apt-get install -y -qq x11vnc 2>&1", {
+    execSync(`${sudo}apt-get update -qq && ${sudo}apt-get install -y -qq x11vnc 2>&1`, {
       encoding: "utf8",
       timeout: 120000,
       stdio: "pipe",
@@ -85,7 +105,7 @@ function installLinuxVnc(log) {
     log("[vnc] apt install failed: " + (e.message || e));
   }
   try {
-    execSync("yum install -y x11vnc 2>&1 || dnf install -y x11vnc 2>&1", {
+    execSync(`${sudo}yum install -y x11vnc 2>&1 || ${sudo}dnf install -y x11vnc 2>&1`, {
       encoding: "utf8",
       timeout: 120000,
       stdio: "pipe",
@@ -204,10 +224,11 @@ function startWindowsVnc(vncType, port, password, log) {
 
 function ensureXvfb(display, log) {
   // Ensure openbox, xterm, xdotool, x11-xserver-utils are installed if on Linux
-  if (!isWin && !isMac && (!which("openbox") || !which("xdotool"))) {
+  const sudo = privilegedPrefix();
+  if (!isWin && !isMac && sudo !== null && (!which("openbox") || !which("xdotool"))) {
     try {
       log("[vnc] Installing openbox, xterm, xdotool, x11-xserver-utils...");
-      execSync("apt-get update -qq && apt-get install -y openbox xterm xdotool x11-xserver-utils 2>&1", {
+      execSync(`${sudo}apt-get update -qq && ${sudo}apt-get install -y openbox xterm xdotool x11-xserver-utils 2>&1`, {
         timeout: 120000,
         stdio: "pipe",
       });
@@ -243,8 +264,12 @@ function ensureXvfb(display, log) {
   // No X display — start Xvfb
   if (!which("Xvfb")) {
     log("[vnc] No X display and Xvfb not available. Trying to install...");
+    if (sudo === null) {
+      log("[vnc] No root privileges to install Xvfb. Install it manually: sudo apt-get install xvfb");
+      return null;
+    }
     try {
-      execSync("apt-get update -qq && apt-get install -y -qq xvfb 2>&1", { timeout: 60000, stdio: "pipe" });
+      execSync(`${sudo}apt-get update -qq && ${sudo}apt-get install -y -qq xvfb 2>&1`, { timeout: 60000, stdio: "pipe" });
     } catch {
       log("[vnc] Cannot install Xvfb. VNC requires an X display.");
       return null;
@@ -435,4 +460,11 @@ async function setupVnc(opts, log) {
   return { port, host: "127.0.0.1", proc, xvfb: xvfbProc, type: vncType };
 }
 
-module.exports = { setupVnc, detectLinuxVnc, detectWindowsVnc, detectMacVnc, installLinuxVnc };
+module.exports = {
+  setupVnc,
+  detectLinuxVnc,
+  detectWindowsVnc,
+  detectMacVnc,
+  installLinuxVnc,
+  privilegedPrefix,
+};
